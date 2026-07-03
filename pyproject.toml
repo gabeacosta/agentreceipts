@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentreceipts"
+version = "0.1.0"
+description = "Tamper-proof signed receipts for every AI agent action"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = [
+    "cryptography>=42.0",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.25"]
+openai = ["openai>=1.0"]
+all = ["anthropic>=0.25", "openai>=1.0"]
+
+[project.scripts]
+receipts = "agentreceipts._cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agentreceipts*"]
