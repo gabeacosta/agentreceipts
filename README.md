@@ -11,7 +11,7 @@ import agentreceipts
 client = agentreceipts.wrap(anthropic.Anthropic())
 ```
 
-Pairs with [leakscan](https://github.com/leakscan-ai/leakscan) — scan your receipt files for spend, failures, and waste in one command.
+<!-- TODO(gabe): repoint to live successor -->
 
 ---
 
@@ -131,8 +131,3 @@ response = client.chat.completions.create(
 }
 ```
 
----
-
-## Related
-
-- [leakscan](https://github.com/leakscan-ai/leakscan) — scan receipt files for spend, failures, and waste
