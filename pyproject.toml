@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentreceipts"
 version = "0.1.0"
-description = "Tamper-proof signed receipts for every AI agent action"
+description = "Local Ed25519-signed observation receipts for AI agent actions"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 dependencies = [
