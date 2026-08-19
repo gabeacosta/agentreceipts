@@ -1,61 +1,63 @@
 # agentreceipts
 
-Two-line drop-in for any Anthropic or OpenAI client. Every API call, tool use, and agent action produces an Ed25519-signed, tamper-evident receipt. Nothing leaves your machine.
+Local Ed25519-signed **observation receipts** for LLM calls, tool calls, and agent actions.
 
-```bash
-pip install agentreceipts
-```
+This project records a canonical, secret-scrubbed observation locally, hashes it, and signs it with a key controlled by the operator. A later verifier can detect whether that signed record was altered after it was produced.
 
-```python
-import agentreceipts
-client = agentreceipts.wrap(anthropic.Anthropic())
-```
+> **Scope boundary:** a locally signed receipt is evidence about what the local observer recorded. It is **not** provider attestation, authorization to perform an action, proof that an action was correct, or proof that an external side effect actually occurred.
 
-<!-- TODO(gabe): repoint to live successor -->
+That distinction is intentional. In a governed agent system, receipts are an **evidence input**; policy, authority, sink effects, and verifier acceptance are separate concerns.
 
 ---
 
 ## Quickstart
 
+```bash
+git clone https://github.com/gabeacosta/agentreceipts.git
+cd agentreceipts
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[all]'
+```
+
 ```python
 import anthropic
 import agentreceipts
 
-# Optional: configure where receipts are written (default: ~/.agentreceipts/)
 agentreceipts.init(out_dir="./observations")
-
-# Drop-in replacement for your existing client
 client = agentreceipts.wrap(anthropic.Anthropic())
 
 response = client.messages.create(
     model="claude-sonnet-4-6",
     max_tokens=1024,
-    messages=[{"role": "user", "content": "Summarize this contract..."}],
+    messages=[{"role": "user", "content": "Summarize this contract."}],
 )
 ```
 
-Every call writes a signed receipt to `./observations/`. OpenAI works the same way.
+The wrapper records a local signed observation without storing raw prompt/output text in the receipt payload.
 
 ---
 
 ## Verify a receipt
 
 ```bash
-receipts verify ar_obs_a1b2c3d4e5f6g7h8
+receipts verify <receipt-id>
 ```
 
-```
-receipt_id:   ar_obs_a1b2c3d4e5f6g7h8
-event_type:   obs.llm.call.v1
-observed_at:  2026-06-15T14:23:01.123456+00:00
-backfilled:   False
-hash_valid:   True
-sig_valid:    True
+Verification checks the receipt's canonical hash and Ed25519 signature against the public key embedded/referenced by the local observation format. If either check fails, the record has not preserved its signed integrity.
 
-VERIFIED
-```
+What verification **does establish**:
 
-`hash_valid: True` + `sig_valid: True` + `backfilled: False` — cryptographic proof the call happened, independently verifiable offline.
+- the receipt body matches its recorded hash;
+- the signature matches the corresponding signing key;
+- fields covered by the signature have not been silently edited since signing.
+
+What verification **does not establish**:
+
+- that Anthropic/OpenAI or another provider attested to the event;
+- that the underlying tool or external system actually completed the claimed side effect;
+- that the action was authorized by policy;
+- that the result was correct, safe, or accepted by an independent verifier.
 
 ---
 
@@ -63,13 +65,15 @@ VERIFIED
 
 ```python
 with agentreceipts.run("intake-run-001") as run_id:
-    r1 = client.messages.create(...)   # receipt tagged with run_id
-    r2 = client.messages.create(...)   # same run_id
+    r1 = client.messages.create(...)
+    r2 = client.messages.create(...)
 ```
+
+Receipts created inside the context carry the same run identifier so observations can be grouped without turning the receipt layer into a workflow runtime.
 
 ---
 
-## Observe a tool call or action
+## Record a tool observation
 
 ```python
 agentreceipts.tool("obs.tool.database_query.v1", {
@@ -80,54 +84,44 @@ agentreceipts.tool("obs.tool.database_query.v1", {
 })
 ```
 
+Again, this records what the observer was told about the tool event. For consequential effects, pair the observation with an authority boundary and independent sink/verifier evidence.
+
 ---
 
-## OpenAI
+## Privacy properties
 
-```python
-import openai
-import agentreceipts
+The public implementation is designed so that:
 
-client = agentreceipts.wrap(openai.OpenAI())
-response = client.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": "..."}],
-)
+- prompt/output content is represented by hashes rather than stored verbatim in the receipt payload;
+- common secret-shaped fields are scrubbed before signing;
+- receipts are written locally by default;
+- the operator owns the signing key;
+- modifying signed fields invalidates hash/signature verification.
+
+These are implementation properties, not a claim that the receipt layer alone provides end-to-end system security.
+
+---
+
+## Where this fits
+
+```text
+model / tool observation
+        ↓
+ local signed receipt       ← this repo
+        ↓
+ authority / policy         ← separate boundary
+        ↓
+ external effect
+        ↓
+ independent verification   ← separate boundary
 ```
 
----
+For the larger execution-governance and runtime-evaluation story, see:
 
-## Privacy guarantees
+- [governed-mcp-spine](https://github.com/gabeacosta/governed-mcp-spine)
+- [Public Runtime Wind Tunnel](https://github.com/gabeacosta/ai-portfolio/tree/main/specimens/agent-runtime-wind-tunnel)
+- [Forward Deployed Engineering portfolio](https://github.com/gabeacosta/ai-portfolio)
 
-- Prompts and outputs are **never stored** — only their SHA-256 hashes
-- All payload fields are scrubbed for secrets before signing (bearer tokens, JWTs, API keys, connection strings, PEM blocks)
-- Receipts are **local-only** — nothing reaches any server
-- You own the signing key (`~/.agentreceipts/witness-key.pem`)
-- Receipts are immutable — altering one breaks verification
+## License
 
----
-
-## Receipt format
-
-```json
-{
-  "schema_version": "agentreceipts.observation.v1",
-  "receipt_id": "ar_obs_a1b2c3d4e5f6g7h8",
-  "event_type": "obs.llm.call.v1",
-  "observed_at": "2026-06-15T14:23:01.123456+00:00",
-  "payload": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6",
-    "prompt_anchor": "sha256:4a7b...",
-    "output_anchor": "sha256:9f2c...",
-    "stop_reason": "end_turn",
-    "usage": { "input_tokens": 312, "output_tokens": 88 }
-  },
-  "backfilled": false,
-  "public_key_id": "sdk-key-v1",
-  "public_key_b64": "...",
-  "receipt_hash": "sha256:...",
-  "signature": "ed25519:..."
-}
-```
-
+MIT
